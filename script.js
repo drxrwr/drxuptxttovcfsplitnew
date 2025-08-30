@@ -55,18 +55,15 @@ function renderFileList() {
   new Sortable(fileListDiv, {
     animation: 150,
     onEnd: () => {
-      // rebuild uploadedFiles sesuai urutan elemen DOM
       const newOrder = [];
       fileListDiv.querySelectorAll("div").forEach((el) => {
         const idx = parseInt(el.dataset.index, 10);
         newOrder.push(uploadedFiles[idx]);
       });
       uploadedFiles = newOrder;
-      // re-render file indexes (data-index) agar konsisten
       fileListDiv.innerHTML = uploadedFiles
         .map((f, i) => `<div data-index="${i}">${f.name}</div>`)
         .join("");
-      // attach new Sortable again (to keep handlers) - minimal overhead
       new Sortable(fileListDiv, {
         animation: 150,
         onEnd: () => {
@@ -124,7 +121,7 @@ document.getElementById("splitVCFButton").addEventListener("click", async functi
   if (isNaN(startNumber)) startNumber = 1;
 
   const fileNameRaw = document.getElementById("splitFileNameInput").value;
-  const additionalFileName = parseWithSpasi(document.getElementById("additionalFileNameInput").value);
+  const additionalFileNameRaw = document.getElementById("additionalFileNameInput").value;
   const useCustomName = document.getElementById("customNameCheckbox").checked;
 
   if (!rawNumbers) {
@@ -132,10 +129,8 @@ document.getElementById("splitVCFButton").addEventListener("click", async functi
     return;
   }
 
-  // Jika tidak ada upload file (user mungkin paste manual), buat synthetic single file
   const fileSources = uploadedFiles.length ? uploadedFiles : [{ name: "pasted.txt", isSynthetic: true }];
 
-  // Baca setiap file sesuai urutan uploadedFiles
   const results = await Promise.all(
     fileSources.map((file) => {
       return new Promise((resolve) => {
@@ -170,7 +165,6 @@ document.getElementById("splitVCFButton").addEventListener("click", async functi
     let fileChunks = [];
 
     if (isNaN(contactsPerFile)) {
-      // setiap file = 1 VCF utuh
       fileChunks = [fileData.lines];
     } else {
       for (let i = 0; i < fileData.lines.length; i += contactsPerFile) {
@@ -178,17 +172,14 @@ document.getElementById("splitVCFButton").addEventListener("click", async functi
       }
     }
 
-    // Jika useCustomName true => nomor urut di nama kontak reset per file (local)
     fileChunks.forEach((chunk, chunkIdx) => {
       let vcfContent = "";
       chunk.forEach((number, idx) => {
         let contactName = "";
         if (useCustomName) {
-          // reset per-file numbering: idx+1 (local)
           const localIdx = idx + 1;
-          contactName = `${parseWithSpasi(nameBase)} ${parseWithSpasi(fileNameRaw)}${startNumber + fileIndex} ${additionalFileName} ${localIdx}`.trim();
+          contactName = `${parseWithSpasi(nameBase)} ${parseWithSpasi(fileNameRaw)}${startNumber + fileIndex}${parseWithSpasi(additionalFileNameRaw)} ${localIdx}`.trim();
         } else {
-          // lanjutkan global index antar-file
           globalIndexCounter++;
           contactName = nameBase
             ? `${parseWithSpasi(nameBase)} ${globalIndexCounter}`
@@ -197,10 +188,10 @@ document.getElementById("splitVCFButton").addEventListener("click", async functi
         vcfContent += `BEGIN:VCARD\nVERSION:3.0\nFN:${contactName}\nTEL:${number}\nEND:VCARD\n`;
       });
 
-      // Nama file: gunakan fileIndex untuk menandai urutan file (ikuti struktur awal)
-      const currentFileName = `${parseWithSpasi(fileNameRaw)}${startNumber + fileIndex}${additionalFileName ? " " + additionalFileName : ""}`.trim();
+      let splitFileName = parseWithSpasi(fileNameRaw) + (startNumber + fileIndex);
+      let additionalNamePart = parseWithSpasi(additionalFileNameRaw);
+      const currentFileName = additionalNamePart ? `${splitFileName} ${additionalNamePart}` : splitFileName;
 
-      // Tampilkan link download per file chunk
       const blob = new Blob([vcfContent], { type: "text/vcard" });
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
@@ -209,12 +200,10 @@ document.getElementById("splitVCFButton").addEventListener("click", async functi
       outputDiv.appendChild(link);
       outputDiv.appendChild(document.createElement("br"));
 
-      // Tambahkan ke zip
       zip.file(`${currentFileName}.vcf`, vcfContent);
     });
   }
 
-  // Buat ZIP
   const zipBlob = await zip.generateAsync({ type: "blob" });
   const zipLink = document.createElement("a");
   zipLink.href = URL.createObjectURL(zipBlob);
